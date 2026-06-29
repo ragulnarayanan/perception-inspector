@@ -74,3 +74,22 @@ def test_online_mode_can_flag_no_detections_without_labels(tmp_path: Path) -> No
     assert result.metadata["mode"] == "online_inspection"
     assert "No Detections" in result.flags
     assert "Missing Detections" not in result.flags
+
+
+def test_inspector_assigns_failure_id_and_scene_metadata(tmp_path: Path) -> None:
+    image_path = tmp_path / "scene.png"
+    make_dark_blurry_image(image_path)
+    record = ImageRecord(
+        image_id="scene-2",
+        filepath=image_path,
+        predictions=[
+            Detection(class_name="person", confidence=0.18, bbox=BoundingBox(x1=44, y1=30, x2=54, y2=62))
+        ],
+        ground_truth=[],
+    )
+
+    result = PerceptionInspector().inspect(record)
+
+    assert result.failure_id.startswith("FAIL-")
+    assert result.metadata["scene_metadata"]["lighting"] == "night"
+    assert "Night" in result.metadata["virtual_bins"]

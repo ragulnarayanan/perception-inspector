@@ -38,3 +38,23 @@ def test_database_persists_inspection_and_vlm_result(tmp_path: Path) -> None:
     detections = database.list_detections("db-scene", source="prediction")
     assert len(detections) == 1
     assert detections[0]["class_name"] == "car"
+
+
+def test_database_clear_removes_all_rows(tmp_path: Path) -> None:
+    image_path = tmp_path / "scene.png"
+    cv2.imwrite(str(image_path), np.zeros((80, 80, 3), dtype=np.uint8))
+    record = ImageRecord(
+        image_id="db-scene",
+        filepath=image_path,
+        predictions=[Detection(class_name="car", confidence=0.1, bbox=BoundingBox(x1=4, y1=4, x2=12, y2=12))],
+        ground_truth=[],
+    )
+    result = PerceptionInspector().inspect(record)
+
+    database = FailureDatabase(tmp_path / "failures.db")
+    database.initialize()
+    database.upsert_record(record, result)
+
+    database.clear()
+
+    assert database.list_failures() == []

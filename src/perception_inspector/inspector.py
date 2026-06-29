@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from dataclasses import dataclass
 
@@ -73,6 +74,14 @@ class PerceptionInspector:
             false_negative_count=len(false_negatives),
         )
 
+        metadata = {
+            "image_width": width,
+            "image_height": height,
+            "mode": "offline_validation" if has_ground_truth else "online_inspection",
+            "has_ground_truth": has_ground_truth,
+            "scene_metadata": self._scene_metadata(record, scene_metrics, flags),
+            "virtual_bins": self._virtual_bins(record, scene_metrics, flags, score),
+        }
         return InspectionResult(
             image_id=record.image_id,
             filepath=str(record.filepath),
@@ -84,12 +93,8 @@ class PerceptionInspector:
             matches=matches,
             false_positive_indices=false_positives,
             false_negative_indices=false_negatives,
-            metadata={
-                "image_width": width,
-                "image_height": height,
-                "mode": "offline_validation" if has_ground_truth else "online_inspection",
-                "has_ground_truth": has_ground_truth,
-            },
+            failure_id=self._build_failure_id(record.image_id),
+            metadata=metadata,
         )
 
     def _prediction_quality_flags(
@@ -158,6 +163,47 @@ class PerceptionInspector:
             confidence_variance=float(np.var(confidences)) if confidences else None,
             class_frequency=dict(Counter(prediction.class_name for prediction in predictions)),
         )
+
+    def _scene_metadata(self, record: ImageRecord, scene_metrics, flags: list[str]) -> dict[str, str | bool]:
+        lighting = "night" if scene_metrics.brightness < self.config.low_brightness_threshold else "day"
+        weather = "rain" if "Motion Blur" in flags or scene_metrics.blur_score > 0.7 else "clear"
+        traffic_density = "high" if len(record.predictions) >= 3 else "medium" if record.predictions else "low"
+        road_type = "urban" if len(record.predictions) >= 2 else "mixed"
+        construction = any(flag in flags for flag in {"Box Outside Image", "Abnormal Aspect Ratio"})
+        occlusion = "moderate" if "Small Object" in flags or "Duplicate Detection" in flags else "light"
+        scene_complexity = "high" if len(flags) >= 4 else "medium" if flags else "low"
+        return {
+            "lighting": lighting,
+            "weather": weather,
+            "traffic_density": traffic_density,
+            "road_type": road_type,
+            "construction": construction,
+            "occlusion": occlusion,
+            "scene_complexity": scene_complexity,
+        }
+
+    def _virtual_bins(self, record: ImageRecord, scene_metrics, flags: list[str], score: float) -> list[str]:
+        metadata = self._scene_metadata(record, scene_metrics, flags)
+        bins = []
+        if metadata["lighting"] == "night":
+            bins.append("Night")
+        if metadata["weather"] == "rain":
+            bins.append("Rain")
+        if "Motion Blur" in flags:
+            bins.append("Motion Blur")
+        if "Small Object" in flags:
+            bins.append("Small Objects")
+        if "Low Confidence" in flags:
+            bins.append("Low Confidence")
+        if score >= 55:
+            bins.append("High Priority")
+        if any(flag in flags for flag in {"False Positive", "False Negative", "Misclassification"}):
+            bins.append("Human Review")
+        return sorted(set(bins))
+
+    def _build_failure_id(self, image_id: str) -> str:
+        digest = hashlib.sha1(image_id.encode("utf-8")).hexdigest()[:8].upper()
+        return f"FAIL-{digest}"
 
     def _score(
         self,

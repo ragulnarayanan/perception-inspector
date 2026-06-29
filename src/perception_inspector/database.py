@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS detections (
 
 CREATE TABLE IF NOT EXISTS inspector (
     image_id TEXT PRIMARY KEY,
+    failure_id TEXT NOT NULL,
     failure_score REAL NOT NULL,
     priority TEXT NOT NULL,
     flags_json TEXT NOT NULL,
@@ -78,13 +79,14 @@ class FailureDatabase:
             connection.execute(
                 """
                 INSERT OR REPLACE INTO inspector (
-                    image_id, failure_score, priority, flags_json, scene_metrics_json,
+                    image_id, failure_id, failure_score, priority, flags_json, scene_metrics_json,
                     detection_stats_json, matches_json, false_positive_indices_json,
                     false_negative_indices_json, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.image_id,
+                    result.failure_id,
                     result.failure_score,
                     result.priority.value,
                     json.dumps(result.flags),
@@ -118,6 +120,13 @@ class FailureDatabase:
                 ),
             )
 
+    def clear(self) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM vlm_results")
+            connection.execute("DELETE FROM inspector")
+            connection.execute("DELETE FROM detections")
+            connection.execute("DELETE FROM images")
+
     def list_failures(self) -> list[sqlite3.Row]:
         with self.connect() as connection:
             return list(
@@ -126,6 +135,7 @@ class FailureDatabase:
                     SELECT
                         images.image_id,
                         images.filepath,
+                        inspector.failure_id,
                         inspector.failure_score,
                         inspector.priority,
                         inspector.flags_json,

@@ -115,6 +115,7 @@ class InspectionResult(BaseModel):
     matches: list[MatchedPair]
     false_positive_indices: list[int]
     false_negative_indices: list[int]
+    failure_id: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property

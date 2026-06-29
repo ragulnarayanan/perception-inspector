@@ -8,9 +8,10 @@ This scaffold follows the project handoff: the detector is treated as a black bo
 
 - Deterministic validation rules for confidence, missing detections, no detections, duplicates, false positives, false negatives, misclassifications, localization, abnormal boxes, and scene quality.
 - Failure scoring from rule violations, scene metrics, object size, and confidence statistics.
+- Structured failure IDs, scene metadata, and virtual bins for review organization.
 - SQLite persistence for images, detections, inspector outputs, and VLM results.
 - CLI commands for inspecting JSON inputs and initializing the database.
-- Streamlit dashboard for browsing high-priority failures.
+- Streamlit dashboard for browsing high-priority failures and clearing the current database contents.
 - A VLM adapter interface with a deterministic local fallback and a placeholder for Qwen2.5-VL integration.
 - Sample fixture data and tests.
 
@@ -119,7 +120,7 @@ Streamlit:
 streamlit run dashboard/app.py -- --db data/failures.db
 ```
 
-Open the `Data Loader` panel in the sidebar. Choose `Online Inspection` for single-image upload without labels, or `Offline Validation` for dataset evaluation with labels.
+Open the `Data Loader` panel in the sidebar. Choose `Online Inspection` for single-image upload without labels, or `Offline Validation` for dataset evaluation with labels. Use the `Database` section in the sidebar to clear all stored rows from the active SQLite file when you want to start a fresh review session.
 
 CLI:
 
@@ -133,6 +134,16 @@ perception-inspector inspect-labels \
 ```
 
 If `--yolo-model` is omitted in offline validation, the loader still verifies that labels/images are readable, but predictions will be empty and the inspector will flag missing detections. For real failure analysis, install detector extras and run YOLO.
+
+## Failure Intelligence Output
+
+Each inspected image receives:
+
+- a deterministic failure ID in the form `FAIL-XXXXXX`
+- scene metadata such as lighting, weather, traffic density, road type, occlusion, and scene complexity
+- virtual review bins such as `Night`, `Motion Blur`, `Small Objects`, and `High Priority`
+
+These fields are persisted in the SQLite database and shown in the dashboard for faster review.
 
 ## Project Layout
 

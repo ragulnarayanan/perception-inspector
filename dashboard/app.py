@@ -122,6 +122,12 @@ def render_data_loader(database: FailureDatabase) -> None:
         else:
             render_offline_loader(database)
 
+    with st.sidebar.expander("Database", expanded=False):
+        if st.button("Clear SQLite contents", type="secondary"):
+            database.clear()
+            st.success("SQLite contents cleared.")
+            st.rerun()
+
 
 def render_online_loader(database: FailureDatabase) -> None:
     uploaded_image = st.file_uploader("Image", type=["jpg", "jpeg", "png", "webp"])
@@ -228,6 +234,8 @@ def main() -> None:
         record["blur_score"] = round(scene["blur_score"], 3)
         record["detections"] = stats["detection_count"]
         record["mode"] = metadata.get("mode", "unknown").replace("_", " ").title()
+        record["scene_metadata"] = metadata.get("scene_metadata", {})
+        record["virtual_bins"] = ", ".join(metadata.get("virtual_bins", []))
 
     frame = pd.DataFrame(records)
     priorities = ["Critical", "High", "Medium", "Low"]
@@ -249,6 +257,7 @@ def main() -> None:
     st.dataframe(
         filtered[
             [
+                "failure_id",
                 "image_id",
                 "failure_score",
                 "priority",
@@ -257,6 +266,7 @@ def main() -> None:
                 "brightness",
                 "blur_score",
                 "detections",
+                "virtual_bins",
                 "primary_failure",
                 "recommendation",
             ]
@@ -285,8 +295,15 @@ def main() -> None:
 
     with right:
         st.metric("Failure Score", selected["failure_score"])
+        st.write("Failure ID:", selected.get("failure_id") or "Not assigned")
         st.write("Priority:", selected["priority"])
         st.write("Flags:", selected["flags"])
+        scene_metadata = selected.get("scene_metadata") or {}
+        if scene_metadata:
+            st.write("Scene Metadata:", scene_metadata)
+        virtual_bins = selected.get("virtual_bins") or ""
+        if virtual_bins:
+            st.write("Virtual Bins:", virtual_bins)
         st.subheader("Predictions")
         if prediction_rows:
             st.dataframe(
