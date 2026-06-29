@@ -6,3 +6,9 @@ __pycache__/
 data/*.db
 data/*.sqlite
 perception-inspector/.git.backup
+
+# Ignore offline sample images and label files but keep .gitkeep placeholders
+data/offline_sample/images/*
+!data/offline_sample/images/.gitkeep
+data/offline_sample/labels/*
+!data/offline_sample/labels/.gitkeep
