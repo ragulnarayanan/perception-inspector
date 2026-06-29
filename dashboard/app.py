@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from perception_inspector.adapters.yolo import YoloDetector
 from perception_inspector.database import FailureDatabase
 from perception_inspector.inspector import PerceptionInspector
-from perception_inspector.labels import load_labeled_image_records
+from perception_inspector.labels import load_labeled_image_records, load_labeled_image_records_from_payload
 from perception_inspector.models import ImageRecord
 from perception_inspector.vlm import HeuristicVLMAnalyzer
 
@@ -159,34 +159,52 @@ def render_online_loader(database: FailureDatabase) -> None:
 
 
 def render_offline_loader(database: FailureDatabase) -> None:
-    labels_path = st.text_input(
-        "Labels Path",
-        placeholder="labels.json or labels/",
-        help="Use one combined JSON file or a folder with one JSON file per image.",
-    )
-    images_dir = st.text_input(
-        "Image Directory",
-        placeholder="/path/to/images",
-        help="Labels are matched to files in this folder by image filename.",
-    )
+    st.caption("Use uploaded files or point to a folder that contains labels and images for offline validation.")
+    input_mode = st.radio("Input Mode", ["Upload Files", "Folder Path"], horizontal=True)
+
+    if input_mode == "Upload Files":
+        uploaded_labels = st.file_uploader("Labels File", type=["json", "txt"], accept_multiple_files=False)
+        uploaded_images = st.file_uploader("Images", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+    else:
+        folder_path = st.text_input(
+            "Folder Path",
+            placeholder="/path/to/dataset",
+            help="Choose a folder containing labels and images. The app will look for a labels.json file or label JSON files inside the folder.",
+        )
+        uploaded_labels = None
+        uploaded_images = []
+
     limit = st.number_input("Image Limit", min_value=1, max_value=10000, value=25, step=25)
     run_yolo = st.checkbox("Run YOLO predictions", value=False)
     yolo_model = st.text_input("YOLO Model", value="yolo11n.pt", disabled=not run_yolo)
     run_vlm = st.checkbox("Generate VLM fallback analysis", value=True)
 
     if st.button("Load Dataset", type="primary"):
-        labels = Path(labels_path).expanduser()
-        images = Path(images_dir).expanduser()
-        if not labels.exists():
-            st.error(f"Labels path not found: {labels}")
-            return
-        if not images.exists():
-            st.error(f"Image directory not found: {images}")
-            return
+        if input_mode == "Upload Files":
+            if uploaded_labels is None:
+                st.error("Upload a labels file first.")
+                return
+            if not uploaded_images:
+                st.error("Upload at least one image file.")
+                return
+            labels_payload = uploaded_labels.getvalue().decode("utf-8")
+            image_files = [(image.name, image.getvalue()) for image in uploaded_images]
+            records = load_labeled_image_records_from_payload(labels_payload, image_files, limit=int(limit))
+        else:
+            folder = Path(folder_path).expanduser()
+            if not folder.exists() or not folder.is_dir():
+                st.error(f"Folder not found: {folder}")
+                return
+            labels_candidates = [folder / "labels.json", folder / "labels"]
+            labels_path = next((candidate for candidate in labels_candidates if candidate.exists()), None)
+            if labels_path is None:
+                st.error("No labels.json or labels/ folder found in the selected directory.")
+                return
+            images_dir = folder
+            records = load_labeled_image_records(labels_path, images_dir, limit=int(limit))
 
-        records = load_labeled_image_records(labels, images, limit=int(limit))
         if not records:
-            st.error("No records found. Check that image names in the labels JSON exist in the image directory.")
+            st.error("No records found. Check that image names in the labels input match the available image files.")
             return
 
         if run_yolo:

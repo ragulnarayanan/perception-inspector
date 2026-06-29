@@ -1,7 +1,11 @@
 import json
 from pathlib import Path
 
-from perception_inspector.labels import load_labeled_image_records, normalize_category
+from perception_inspector.labels import (
+    load_labeled_image_records,
+    load_labeled_image_records_from_payload,
+    normalize_category,
+)
 
 
 def test_label_loader_reads_labels_and_normalizes_categories(tmp_path: Path) -> None:
@@ -60,4 +64,19 @@ def test_label_loader_reads_one_json_file_per_image(tmp_path: Path) -> None:
 
     assert len(records) == 1
     assert records[0].image_id == "frame_001"
+    assert records[0].ground_truth[0].class_name == "car"
+
+
+def test_label_loader_supports_uploaded_payload_and_images() -> None:
+    labels_payload = json.dumps(
+        {
+            "name": "frame_002.jpg",
+            "labels": [{"category": "car", "box2d": {"x1": 1, "y1": 2, "x2": 3, "y2": 4}}],
+        }
+    )
+
+    records = load_labeled_image_records_from_payload(labels_payload, [("frame_002.jpg", b"placeholder")])
+
+    assert len(records) == 1
+    assert records[0].image_id == "frame_002"
     assert records[0].ground_truth[0].class_name == "car"

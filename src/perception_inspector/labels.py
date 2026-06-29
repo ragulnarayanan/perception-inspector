@@ -60,6 +60,92 @@ def load_labeled_image_records(
     return records
 
 
+def load_labeled_image_records_from_payload(
+    labels_payload: str,
+    image_files: list[tuple[str, bytes]],
+    predictions_by_image: dict[str, list[Detection]] | None = None,
+    limit: int | None = None,
+) -> list[ImageRecord]:
+    records: list[ImageRecord] = []
+    predictions_by_image = predictions_by_image or {}
+    label_items = _parse_label_items(labels_payload)
+    images_dir = Path("/tmp/perception-inspector-upload")
+    images_dir.mkdir(parents=True, exist_ok=True)
+    for file_name, file_bytes in image_files:
+        (images_dir / file_name).write_bytes(file_bytes)
+
+    for item in label_items:
+        image_name = item.get("name") or item.get("image") or item.get("file_name")
+        if not image_name:
+            continue
+        image_path = resolve_image_path(images_dir, image_name)
+        if image_path is None:
+            continue
+
+        image_id = Path(image_name).stem
+        ground_truth = []
+        labels_for_image = item.get("labels", []) or item.get("annotations", [])
+        for label in labels_for_image:
+            box = label.get("box2d") or label.get("bbox")
+            category = label.get("category") or label.get("class_name") or label.get("label")
+            if not box or not category:
+                continue
+            ground_truth.append(_detection_from_label(category, box))
+
+        records.append(
+            ImageRecord(
+                image_id=image_id,
+                filepath=image_path,
+                predictions=predictions_by_image.get(image_id, []),
+                ground_truth=ground_truth,
+            )
+        )
+        if limit is not None and len(records) >= limit:
+            break
+
+    return records
+
+
+def _parse_label_items(labels_payload: str) -> list[dict]:
+    raw = labels_payload.strip()
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return _parse_text_label_items(raw)
+    return _normalize_label_payload(payload)
+
+
+def _parse_text_label_items(raw: str) -> list[dict]:
+    items: list[dict] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 4:
+            continue
+        image_name = parts[0]
+        category = parts[1]
+        x1 = float(parts[2])
+        y1 = float(parts[3])
+        x2 = float(parts[4]) if len(parts) > 4 else x1 + 1.0
+        y2 = float(parts[5]) if len(parts) > 5 else y1 + 1.0
+        items.append(
+            {
+                "name": image_name,
+                "labels": [
+                    {
+                        "category": category,
+                        "box2d": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+                    }
+                ],
+            }
+        )
+    return items
+
+
 def _load_label_items(labels_path: Path) -> list[dict]:
     if labels_path.is_dir():
         items = []
