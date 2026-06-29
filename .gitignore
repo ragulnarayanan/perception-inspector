@@ -5,3 +5,4 @@ __pycache__/
 *.egg-info/
 data/*.db
 data/*.sqlite
+perception-inspector/.git.backup
